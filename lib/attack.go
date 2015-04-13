@@ -209,7 +209,7 @@ func (a *Attacker) hit(tr Targeter, tm time.Time, ti Timer) *Result {
 
 	sw := ti.Start()
 	r, err := a.client.Do(req)
-	ti.Stop()
+	sw.Stop()
 	if err != nil {
 		// ignore redirect errors when the user set --redirects=NoFollow
 		if a.redirects == NoFollow && strings.Contains(err.Error(), "stopped after") {
