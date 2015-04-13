@@ -128,10 +128,25 @@ func TLSConfig(c *tls.Config) func(*Attacker) {
 	}
 }
 
+// A Timer tracks how long an event has occurred.
+type Timer interface {
+	// Start begins recording the executing time of an event, returning
+	// a Stopwatch that should be used to stop the recording the time for
+	// that event.  Multiple events can be occurring simultaneously each
+	// represented by different active Stopwatches
+	Start() Stopwatch
+}
+
+// A Stopwatch tracks the execution time of a specific event
+type Stopwatch interface {
+	// Stop stops executing of the stopwatch and records the amount of elapsed time
+	Stop()
+}
+
 // Attack reads its Targets from the passed Targeter and attacks them at
 // the rate specified for duration time. Results are put into the returned channel
 // as soon as they arrive.
-func (a *Attacker) Attack(tr Targeter, rate uint64, du time.Duration) chan *Result {
+func (a *Attacker) Attack(tr Targeter, rate uint64, du time.Duration, ti Timer) chan *Result {
 	resc := make(chan *Result)
 	throttle := time.NewTicker(time.Duration(1e9 / rate))
 	hits := rate * uint64(du.Seconds())
@@ -149,7 +164,7 @@ func (a *Attacker) Attack(tr Targeter, rate uint64, du time.Duration) chan *Resu
 			for j := uint64(0); j < share; j++ {
 				select {
 				case tm := <-throttle.C:
-					resc <- a.hit(tr, tm)
+					resc <- a.hit(tr, tm, ti)
 				case <-a.stop:
 					return
 				}
@@ -169,7 +184,7 @@ func (a *Attacker) Attack(tr Targeter, rate uint64, du time.Duration) chan *Resu
 // Stop stops the current attack.
 func (a *Attacker) Stop() { close(a.stop) }
 
-func (a *Attacker) hit(tr Targeter, tm time.Time) *Result {
+func (a *Attacker) hit(tr Targeter, tm time.Time, ti Timer) *Result {
 	var (
 		res = Result{Timestamp: tm}
 		err error
@@ -192,7 +207,9 @@ func (a *Attacker) hit(tr Targeter, tm time.Time) *Result {
 		return &res
 	}
 
+	sw := ti.Start()
 	r, err := a.client.Do(req)
+	ti.Stop()
 	if err != nil {
 		// ignore redirect errors when the user set --redirects=NoFollow
 		if a.redirects == NoFollow && strings.Contains(err.Error(), "stopped after") {
